@@ -32,10 +32,11 @@ RUN = True  # Whether to run the computation. If results are present, computatio
 PLOT = True  # Whether to create plots of the results
 num_workers = 4  # Number of threads to use in parallel. Needs to be set machine-dependently
 
-if __name__ == "__main__":
-    # Directory name to save results to. They will be in f"./data/{data_header}/"
-    data_header = f"production_iter{max_steps}_lr{learning_rate}"
+# Directory name to save results to. They will be in f"./data/{data_header}/"
+data_header = "paper/"
 
+if __name__ == "__main__":
+    data_header = data_header.strip("/")
     # Generate seeds (deterministically)
     runs_per_worker = nruns // num_workers
     seed_lists = [
@@ -44,7 +45,7 @@ if __name__ == "__main__":
     ]
 
     # Store the global variables to allow for later investigation of settings
-    global_config_path = f"./data/{data_header}/"
+    global_config_path = f"./data/{data_header}/{nqubits}/"
     if not os.path.exists(global_config_path):
         os.makedirs(global_config_path)
     with open(global_config_path + "globals.dill", "wb") as file:
