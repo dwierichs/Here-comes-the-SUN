@@ -1,0 +1,6 @@
+pennylane>=0.29
+jax
+jaxlib
+tqdm
+dill
+scienceplots
