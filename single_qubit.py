@@ -4,16 +4,18 @@ import numpy as np
 from pennylane.ops.qubit.special_unitary import pauli_basis_strings, pauli_basis_matrices
 from pennylane.operation import Operation
 import jax
+
 jax.config.update("jax_enable_x64", True)
 jnp = jax.numpy
 
+
 def get_random_observable(N: int):
     basis = pauli_basis_matrices(N)
-    c = np.random.randn(4 ** N - 1)
+    c = np.random.randn(4**N - 1)
     return qml.math.tensordot(c, basis, axes=1)
 
-class MyExp(Operation):
 
+class MyExp(Operation):
     num_params = 1
     num_wires = 1
 
@@ -35,7 +37,6 @@ class MyExp(Operation):
         fs = (qml.gradients.eigvals_to_frequencies(tuple(eigvals)),)
         return fs
 
-
     def adjoint(self):
         return MyExp(-self.data[0], wires=self.wires, generator=self._generator)
 
@@ -48,7 +49,7 @@ def circuit(a, b, observable):
     """Quantum circuit with a single-qubit SpecialUnitary and an expectation value
     measurement. The circuit takes the parameters for the PauliX and PauliY components of
     the generator of the gate.
-    
+
     Args:
         a (float): Parameter for PauliX component of the gate generator
         b (float): Parameter for PauliY component of the gate generator
@@ -57,16 +58,17 @@ def circuit(a, b, observable):
     Returns:
         qml.measurements.ExpectationMP: Measurement process to obtain the expectation value.
     """
-    theta = jnp.array([a, b, 0.])
+    theta = jnp.array([a, b, 0.0])
     qml.SpecialUnitary(theta, [0])
     return qml.expval(observable)
+
 
 def circuit_with_opg(a, b, t, observable):
     """Quantum circuit with a single-qubit SpecialUnitary, as well as a one-parameter group
     corresponding to the first parameter of said unitary, and an expectation value
     measurement. The circuit takes the parameters for the PauliX and PauliY components of
     the generator of the gate.
-    
+
     Args:
         a (float): Parameter for PauliX component of the gate generator
         b (float): Parameter for PauliY component of the gate generator
@@ -78,7 +80,7 @@ def circuit_with_opg(a, b, t, observable):
     Returns:
         qml.measurements.ExpectationMP: Measurement process to obtain the expectation value.
     """
-    theta = jnp.array([a, b, 0.])
+    theta = jnp.array([a, b, 0.0])
     # Obtain the effective generator for the first parameter of the SpecialUnitary. For this,
     # we stop the queuing of PennyLane while creating the operation, and apply it manually later on
     with qml.queuing.QueuingManager.stop_recording():
@@ -89,6 +91,7 @@ def circuit_with_opg(a, b, t, observable):
     qml.apply(op)
     return qml.expval(observable)
 
+
 def finite_diff_first(fun, dx=5e-5, argnums=0):
     """Compute the second-order finite difference approximation of the first order derivative."""
     if isinstance(argnums, int):
@@ -97,14 +100,15 @@ def finite_diff_first(fun, dx=5e-5, argnums=0):
     def wrapped(*args, **kwargs):
         grad = []
         for i in argnums:
-            new_args = args[:i] + (args[i]+dx/2,) + args[i+1:]
+            new_args = args[:i] + (args[i] + dx / 2,) + args[i + 1 :]
             fun_plus = fun(*new_args, **kwargs)
-            new_args = args[:i] + (args[i]-dx/2,) + args[i+1:]
+            new_args = args[:i] + (args[i] - dx / 2,) + args[i + 1 :]
             fun_minus = fun(*new_args, **kwargs)
             grad.append((fun_plus - fun_minus) / dx)
         return jnp.array(grad)
 
     return wrapped
+
 
 def evaluate_on_grid(fun, a_grid, b_grid, *other_args, sampled=False, **kwargs):
     shape = (len(a_grid), len(b_grid))
@@ -123,6 +127,3 @@ def evaluate_on_grid(fun, a_grid, b_grid, *other_args, sampled=False, **kwargs):
             ids, args = zip(*tuples)
             result[ids] = fun(*args, *other_args, **kwargs)
         return result
-
-
-
