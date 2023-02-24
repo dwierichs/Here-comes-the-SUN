@@ -39,7 +39,7 @@ def exact_grad(num_samples):
     a_grid = jnp.linspace(0, np.pi + 0.001, gran)
 
     # Data generation/loading
-    filename = f"data/exact_grad_{num_samples}.dill"
+    filename = f"data/paper/exact_grad_{num_samples}.dill"
     if not os.path.exists(filename):
         grad_fns = {
             method: setup_grad_fn(method, observable, shots=None, delta=delta, num_samples=num_samples) for method in [ad, ps, fd, spsr]
@@ -108,10 +108,11 @@ def sampled_grad(shots, num_samples):
     a_grid = jnp.linspace(0, np.pi + 0.001, gran)
 
     # Data generation/loading
-    filename = f"data/sampled_grad_{num_samples}_{shots}.dill"
+    filename = f"data/paper/sampled_grad_{num_samples}_{shots}.dill"
     if not os.path.exists(filename):
+        shots = {ad: None, ps: shots, fd: shots, spsr: shots//num_samples}
         grad_fns = {
-            method: setup_grad_fn(method, observable, shots=None if method==ad else shots, delta=delta, num_samples=num_samples) for method in [ad, ps, fd, spsr]
+            method: setup_grad_fn(method, observable, shots=shots[method], delta=delta, num_samples=num_samples) for method in [ad, ps, fd, spsr]
         }
         grads = {ad: evaluate_on_grid(grad_fns[ad], a_grid, b_lines, observable=observable)}
         stds = {}
