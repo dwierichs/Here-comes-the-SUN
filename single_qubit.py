@@ -91,6 +91,28 @@ def circuit_with_opg(a, b, t, observable):
     qml.apply(op)
     return qml.expval(observable)
 
+def circuit_for_spsr(a, b, s, sign, observable):
+    """Quantum circuit with a single-qubit SpecialUnitary interrupted by a rotation about
+    PauliX by an angle of $\pm\pi/4$ and an expectation value measurement.
+    The circuit takes the parameters for the PauliX and PauliY components of
+    the generator of the gate, as well as the splitting time.
+
+    Args:
+        a (float): Parameter for PauliX component of the gate generator
+        b (float): Parameter for PauliY component of the gate generator
+        s (float): Splitting time for the SpecialUnitary
+        sign (int): Sign in front of the inserted PauliX rotation
+        observable (qml.Observable): Observable to measure the expectation value of
+
+    Returns:
+        qml.measurements.ExpectationMP: Measurement process to obtain the expectation value.
+    """
+    theta = jnp.array([a, b, 0.0])
+    qml.SpecialUnitary((1-s) * theta, [0])
+    qml.RX(-sign * jnp.pi/2, [0])
+    qml.SpecialUnitary(s * theta, [0])
+    return qml.expval(observable)
+
 
 def finite_diff_first(fun, dx=5e-5, argnums=0):
     """Compute the second-order finite difference approximation of the first order derivative."""
@@ -106,6 +128,24 @@ def finite_diff_first(fun, dx=5e-5, argnums=0):
             fun_minus = fun(*new_args, **kwargs)
             grad.append((fun_plus - fun_minus) / dx)
         return jnp.array(grad)
+
+    return wrapped
+
+def spsr_evaluation(fun, num_samples):
+    """Evaluate the stochastic parameter-shift rule of a function by
+    evaluating an adequately adapted function for a given number of
+    samples and with positive and negative signs, returning their 
+    average difference.
+    """
+
+    def wrapped(*args, **kwargs):
+        split_times = np.random.uniform(size=num_samples)
+        split_times_ = np.random.uniform(size=num_samples)
+        diffs = [
+            fun(*args, s, 1, **kwargs) - fun(*args, s_, -1, **kwargs)
+            for s, s_ in zip(split_times, split_times_)
+        ]
+        return jnp.mean(jnp.array(diffs), axis=0)
 
     return wrapped
 

@@ -11,8 +11,10 @@ from single_qubit import (
     get_random_observable,
     circuit,
     circuit_with_opg,
+    circuit_for_spsr,
     finite_diff_first,
     evaluate_on_grid,
+    spsr_evaluation,
 )
 
 jax.config.update("jax_enable_x64", True)
@@ -193,7 +195,7 @@ def parshift_vs_finitediff(shots):
     plt.style.use("science")
     plt.rcParams.update({"font.size": 13})
     fig, axs = plt.subplots(3, 1, figsize=(5, 8), gridspec_kw={"hspace": 0.0})
-    labels = ["Parameter shift", "Finite difference"]
+    labels = ["$\mathrm{SU}(N)$ Parameter shift", "Finite difference"]
     colors = ["xkcd:bright blue", "xkcd:burnt orange"]
     for i, ax in enumerate(axs):
         plot = ax.plot(
@@ -235,9 +237,99 @@ def parshift_vs_finitediff(shots):
     fig.savefig("./figures/parshift_vs_finitediff.pdf")
     plt.show()
 
+def parshift_vs_spsr(shots, num_samples):
+    np.random.seed(21207)
+    nqubits = 1
+    dev = qml.device("default.qubit", wires=nqubits)
+    dev_sample = qml.device("default.qubit", wires=nqubits, shots=[1] * shots)
+    if shots%num_samples:
+        raise ValueError("The number of shots should be divisible by the number of samples.")
+    dev_spsr = qml.device("default.qubit", wires=nqubits, shots=[1] * (shots//num_samples))
+    observable = qml.Hermitian(get_random_observable(nqubits), wires=list(range(nqubits)))
+
+    # a-axis resolution
+    gran = 1
+
+    # QNode that takes parameters a and b, as well as the observable, and parameter t for the
+    # exponential of the effective generator
+    qnode_grad = qml.QNode(circuit_with_opg, dev, interface="jax")
+
+    qnode_grad_sample_ps = qml.QNode(
+        circuit_with_opg, dev_sample, interface="jax", diff_method="parameter-shift"
+    )
+    qnode_grad_sample_spsr = qml.QNode(circuit_for_spsr, dev_spsr, interface="jax", diff_method=None)
+
+    # Gradient computed by differentiating exp(Omega * t)
+    grad_fn_generator = jax.jit(jax.grad(qnode_grad, argnums=2), static_argnums=3)
+    # Gradient computed via automatic differentiation
+    grad_fn_sample_ps = jax.jacobian(qnode_grad_sample_ps, argnums=2)
+    grad_fn_sample_spsr = spsr_evaluation(qnode_grad_sample_spsr, num_samples)
+
+    # Fixed values of b for which to compute the gradient values
+    b_lines = [0.5, 1.0, 2.0]
+    # grid for a-axis
+    a_grid = np.linspace(0, np.pi + 0.001, gran)
+
+    grads_a_exact = evaluate_on_grid(
+        grad_fn_generator, a_grid, b_lines, jnp.array(0.0), observable=observable
+    )
+    grads_a_sample_ps_mean, grads_a_sample_ps_std = evaluate_on_grid(
+        grad_fn_sample_ps, a_grid, b_lines, jnp.array(0.0), observable=observable, sampled=True
+    )
+    grads_a_sample_spsr_mean, grads_a_sample_spsr_std = evaluate_on_grid(
+        grad_fn_sample_spsr, a_grid, b_lines, observable=observable, sampled=True
+    )
+
+    plt.style.use("science")
+    plt.rcParams.update({"font.size": 13})
+    fig, axs = plt.subplots(3, 1, figsize=(5, 8), gridspec_kw={"hspace": 0.0})
+    labels = ["$\mathrm{SU}(N)$ Parameter shift", "Stochastic parameter shift"]
+    colors = ["xkcd:bright blue", "xkcd:coral"]
+    for i, ax in enumerate(axs):
+        plot = ax.plot(
+            a_grid,
+            grads_a_exact[:, i],
+            lw=1.1,
+            ls="-",
+            zorder=3,
+            alpha=0.7,
+            c="k",
+            label="" if i < 2 else "Exact",
+        )[0]
+        for j, (mean, std) in enumerate(
+            [
+                (grads_a_sample_ps_mean, grads_a_sample_ps_std),
+                (grads_a_sample_spsr_mean, grads_a_sample_spsr_std),
+            ]
+        ):
+            c = colors[j]
+            mu, sigma = mean[:, i], std[:, i]
+            ax.plot(a_grid, mu, lw=2.5, ls="--", zorder=1, label="" if i < 2 else labels[j], c=c)
+            ax.plot(a_grid, mu + sigma, lw=1.0, ls="-", alpha=0.3, c=c, zorder=-1)
+            ax.plot(a_grid, mu - sigma, lw=1.0, ls="-", alpha=0.3, c=c, zorder=-1)
+            ax.fill_between(a_grid, mu - sigma, mu + sigma, color=c, alpha=0.2, zorder=-1)
+
+        ax.text(
+            0.05, 0.95, rf"$b = ${b_lines[i]:1.1f}", transform=ax.transAxes, verticalalignment="top"
+        )
+        ax.set_ylabel(r"$\frac{\partial C(\boldmath{\theta})}{\partial a}$")
+        if i < 2:
+            ax.set_xticks([])
+        else:
+            ax.legend(loc="lower left")
+            ax.xaxis.set_ticks_position("bottom")
+            ax.set_xlabel("$a$")
+    plt.tight_layout()
+    if not os.path.exists("figures"):
+        os.makedirs("figures")
+    fig.savefig("./figures/parshift_vs_spsr.pdf")
+    plt.show()
+
 
 if __name__ == "__main__":
-    shots = 100
-    exact_grad()
-    sampled_grad(shots)
-    parshift_vs_finitediff(shots)
+    shots = 10000
+    num_samples = 10
+    #exact_grad()
+    #sampled_grad(shots)
+    #parshift_vs_finitediff(shots)
+    parshift_vs_spsr(shots, num_samples)
