@@ -3,157 +3,29 @@ from itertools import product
 import matplotlib.pyplot as plt
 import scienceplots
 import jax
+from dill import dump, load
 
 import pennylane as qml
 from pennylane import numpy as np
 
 from single_qubit import (
     get_random_observable,
-    circuit,
-    circuit_with_opg,
-    circuit_for_spsr,
-    finite_diff_first,
     evaluate_on_grid,
-    spsr_evaluation,
+    setup_grad_fn,
 )
 
 jax.config.update("jax_enable_x64", True)
 
 jnp = jax.numpy
 
+ad = "autodiff"
+ps = r"$\mathrm{SU}(N)$ parameter-shift"
+fd = "Finite difference"
+spsr = "Stochastic parameter-shift"
 
-def exact_grad():
+def exact_grad(num_samples):
     np.random.seed(21207)
     nqubits = 1
-    dev = qml.device("default.qubit", wires=nqubits)
-    observable = qml.Hermitian(get_random_observable(nqubits), wires=list(range(nqubits)))
-
-    # a-axis resolution
-    gran = 50
-    # Finite difference spacing
-    delta = 1e-5
-
-    # QNode that takes parameters a and b, as well as the observable
-    qnode = qml.QNode(circuit, dev, interface="jax")
-    # QNode that takes parameters a and b, as well as the observable, and parameter t for the
-    # exponential of the effective generator
-    qnode_grad = qml.QNode(circuit_with_opg, dev, interface="jax")
-
-    # Gradient computed by differentiating exp(Omega * t)
-    grad_fn_generator = jax.jit(jax.grad(qnode_grad, argnums=2), static_argnums=3)
-    # Gradient computed via automatic differentiation
-    grad_fn_autodiff = jax.jit(jax.grad(qnode, argnums=0), static_argnums=2)
-    # Gradient computed with finite difference
-    grad_fn_finite_diff = finite_diff_first(qnode, dx=delta, argnums=0)
-
-    qnode = jax.jit(qnode, static_argnums=2)
-
-    # Fixed values of b for which to compute the gradient values
-    b_lines = [0.5, 1.0, 2.0]
-    # grid for a-axis
-    a_grid = np.linspace(0, np.pi + 0.001, gran)
-
-    grads_a_generator = evaluate_on_grid(
-        grad_fn_generator, a_grid, b_lines, jnp.array(0.0), observable=observable
-    )
-    grads_a_exact = evaluate_on_grid(grad_fn_autodiff, a_grid, b_lines, observable=observable)
-    grads_a_finite_diff = evaluate_on_grid(
-        grad_fn_finite_diff, a_grid, b_lines, observable=observable
-    )
-
-    plt.style.use("science")
-    plt.rcParams.update({"font.size": 15})
-    fig, axs = plt.subplots(1, 1)
-    fig.set_size_inches(5, 4)
-    for i in range(3):
-        plot = axs.plot(a_grid, grads_a_generator[:, i], lw=2)[0]
-        axs.plot(a_grid, grads_a_exact[:, i], ls="--", lw=2, c="k")
-        axs.plot(
-            a_grid,
-            grads_a_finite_diff[:, i],
-            lw=2,
-            label=rf"$b = ${b_lines[i]:1.1f}",
-            marker="o",
-            ls="",
-            markersize=4,
-        )
-
-    axs.legend()
-    axs.set_xlabel("$a$")
-    axs.set_ylabel(r"$\frac{\partial C(\boldmath{\theta})}{\partial a}$")
-    plt.tight_layout()
-    if not os.path.exists("figures"):
-        os.makedirs("figures")
-    fig.savefig("./figures/exact_grad.pdf")
-    plt.show()
-
-
-def sampled_grad(shots):
-    np.random.seed(21207)
-    nqubits = 1
-    dev = qml.device("default.qubit", wires=nqubits)
-    dev_sample = qml.device("default.qubit", wires=nqubits, shots=[1] * shots)
-    observable = qml.Hermitian(get_random_observable(nqubits), wires=list(range(nqubits)))
-
-    # a-axis resolution
-    gran = 50
-
-    # QNode that takes parameters a and b, as well as the observable, and parameter t for the
-    # exponential of the effective generator
-    qnode_grad = qml.QNode(circuit_with_opg, dev, interface="jax")
-
-    qnode_grad_sample_ps = qml.QNode(
-        circuit_with_opg, dev_sample, interface="jax", diff_method="parameter-shift"
-    )
-
-    # Gradient computed by differentiating exp(Omega * t)
-    grad_fn_generator = jax.jit(jax.grad(qnode_grad, argnums=2), static_argnums=3)
-    # Gradient computed via automatic differentiation
-    grad_fn_sample_ps = jax.jacobian(qnode_grad_sample_ps, argnums=2)
-
-    # Fixed values of b for which to compute the gradient values
-    b_lines = [0.5, 1.0, 2.0]
-    # grid for a-axis
-    a_grid = np.linspace(0, np.pi + 0.001, gran)
-
-    grads_a_exact = evaluate_on_grid(
-        grad_fn_generator, a_grid, b_lines, jnp.array(0.0), observable=observable
-    )
-    grads_a_sample_ps_mean, grads_a_sample_ps_std = evaluate_on_grid(
-        grad_fn_sample_ps, a_grid, b_lines, jnp.array(0.0), observable=observable, sampled=True
-    )
-
-    plt.style.use("science")
-    plt.rcParams.update({"font.size": 15})
-    fig, axs = plt.subplots(1, 1)
-    fig.set_size_inches(5, 4)
-    for i in range(3):
-        axs.plot(a_grid, grads_a_exact[:, i], lw=0.7, ls="--", zorder=4, alpha=1.0, c="k")[0]
-        axs.errorbar(
-            a_grid,
-            grads_a_sample_ps_mean[:, i],
-            yerr=grads_a_sample_ps_std[:, i],
-            label=rf"$b = ${b_lines[i]:1.1f}",
-            lw=2,
-            alpha=0.8,
-            zorder=0,
-        )
-
-    axs.legend()
-    axs.set_xlabel("$a$")
-    axs.set_ylabel(r"$\frac{\partial C(\boldmath{\theta})}{\partial a}$")
-    plt.tight_layout()
-    if not os.path.exists("figures"):
-        os.makedirs("figures")
-    fig.savefig("./figures/sampled_grad.pdf")
-    plt.show()
-
-
-def parshift_vs_finitediff(shots):
-    np.random.seed(21207)
-    nqubits = 1
-    dev = qml.device("default.qubit", wires=nqubits)
-    dev_sample = qml.device("default.qubit", wires=nqubits, shots=[1] * shots)
     observable = qml.Hermitian(get_random_observable(nqubits), wires=list(range(nqubits)))
 
     # a-axis resolution
@@ -161,175 +33,144 @@ def parshift_vs_finitediff(shots):
     # Finite difference spacing
     delta = 0.5
 
-    # QNode that takes parameters a and b, as well as the observable, and parameter t for the
-    # exponential of the effective generator
-    qnode_grad = qml.QNode(circuit_with_opg, dev, interface="jax")
-
-    qnode_grad_sample_ps = qml.QNode(
-        circuit_with_opg, dev_sample, interface="jax", diff_method="parameter-shift"
-    )
-    # qnode_grad_sample_fd = qml.QNode(circuit_with_opg, dev_sample, interface="jax", diff_method="finite-diff", h=delta, approx_order=2)
-    qnode_grad_sample_fd = qml.QNode(circuit, dev_sample, interface="jax", diff_method=None)
-
-    # Gradient computed by differentiating exp(Omega * t)
-    grad_fn_generator = jax.jit(jax.grad(qnode_grad, argnums=2), static_argnums=3)
-    # Gradient computed via automatic differentiation
-    grad_fn_sample_ps = jax.jacobian(qnode_grad_sample_ps, argnums=2)
-    grad_fn_sample_fd = finite_diff_first(qnode_grad_sample_fd, dx=delta, argnums=0)
-
     # Fixed values of b for which to compute the gradient values
-    b_lines = [0.5, 1.0, 2.0]
+    b_lines = jnp.array([0.5, 1.0, 2.0])
     # grid for a-axis
-    a_grid = np.linspace(0, np.pi + 0.001, gran)
+    a_grid = jnp.linspace(0, np.pi + 0.001, gran)
 
-    grads_a_exact = evaluate_on_grid(
-        grad_fn_generator, a_grid, b_lines, jnp.array(0.0), observable=observable
-    )
-    grads_a_sample_ps_mean, grads_a_sample_ps_std = evaluate_on_grid(
-        grad_fn_sample_ps, a_grid, b_lines, jnp.array(0.0), observable=observable, sampled=True
-    )
-    grads_a_sample_fd_mean, grads_a_sample_fd_std = evaluate_on_grid(
-        grad_fn_sample_fd, a_grid, b_lines, observable=observable, sampled=True
-    )
+    # Data generation/loading
+    filename = f"data/exact_grad_{num_samples}.dill"
+    if not os.path.exists(filename):
+        grad_fns = {
+            method: setup_grad_fn(method, observable, shots=None, delta=delta, num_samples=num_samples) for method in [ad, ps, fd, spsr]
+        }
+        grads = {method: evaluate_on_grid(grad_fns[method], a_grid, b_lines, observable=observable) for method in [ad, fd]}
+        grads[spsr], spsr_std = evaluate_on_grid(grad_fns[spsr], a_grid, b_lines, observable=observable, sampled=True)
+        grads[ps] = evaluate_on_grid(grad_fns[ps], a_grid, b_lines, jnp.array(0.0), observable=observable)
+        with open(filename, "wb") as f:
+            dump((grads, spsr_std), f)
+    else:
+        with open(filename, "rb") as f:
+            grads, spsr_std = load(f)
+            
 
+    # Plotting
     plt.style.use("science")
     plt.rcParams.update({"font.size": 13})
-    fig, axs = plt.subplots(3, 1, figsize=(5, 8), gridspec_kw={"hspace": 0.0})
-    labels = ["$\mathrm{SU}(N)$ Parameter shift", "Finite difference"]
-    colors = ["xkcd:bright blue", "xkcd:burnt orange"]
-    for i, ax in enumerate(axs):
-        plot = ax.plot(
-            a_grid,
-            grads_a_exact[:, i],
-            lw=1.1,
-            ls="-",
-            zorder=3,
-            alpha=0.7,
-            c="k",
-            label="" if i < 2 else "Exact",
-        )[0]
-        for j, (mean, std) in enumerate(
-            [
-                (grads_a_sample_ps_mean, grads_a_sample_ps_std),
-                (grads_a_sample_fd_mean, grads_a_sample_fd_std),
-            ]
-        ):
-            c = colors[j]
-            mu, sigma = mean[:, i], std[:, i]
-            ax.plot(a_grid, mu, lw=2.5, ls="--", zorder=1, label="" if i < 2 else labels[j], c=c)
-            ax.plot(a_grid, mu + sigma, lw=1.0, ls="-", alpha=0.3, c=c, zorder=-1)
-            ax.plot(a_grid, mu - sigma, lw=1.0, ls="-", alpha=0.3, c=c, zorder=-1)
-            ax.fill_between(a_grid, mu - sigma, mu + sigma, color=c, alpha=0.2, zorder=-1)
+    fig, ax = plt.subplots(1, 1)
+    fig.set_size_inches(5, 5)
+    plot_kwargs = {
+        ad: {"ls": "-", "lw": 0.8, "zorder": 10, "color": "k"},
+        ps: {"ls": ":", "lw": 3, "zorder": 4, "color": "xkcd:bright blue"},
+        fd: {"ls": "--", "lw": 1.8, "zorder": 2, "color": "xkcd:pinkish red"},
+        spsr: {"ls": "-", "lw": 0.8, "zorder": 1, "color": "xkcd:grass green"},
+    }
+    for i in range(3):
+        for method in [ad, ps, fd, spsr]:
+            label = method if i==0 else ""
+            if method==ad:
+                label = "Exact value" if i==0 else ""
+            ax.plot(a_grid, grads[method][:, i], label=label, **plot_kwargs[method])
 
-        ax.text(
-            0.05, 0.95, rf"$b = ${b_lines[i]:1.1f}", transform=ax.transAxes, verticalalignment="top"
+        for sign in [1, -1]:
+            ax.plot(a_grid, grads[spsr][:, i] + sign * spsr_std[:, i], **plot_kwargs[spsr])
+        ax.fill_between(
+            a_grid, 
+            grads[spsr][:, i] - sign * spsr_std[:, i],
+            grads[spsr][:, i] + sign * spsr_std[:, i],
+            color=plot_kwargs[spsr]["color"],
+            alpha=0.2, 
+            zorder=plot_kwargs[spsr]["zorder"],
         )
-        ax.set_ylabel(r"$\frac{\partial C(\boldmath{\theta})}{\partial a}$")
-        if i < 2:
-            ax.set_xticks([])
-        else:
-            ax.legend(loc="lower left")
-            ax.xaxis.set_ticks_position("bottom")
-            ax.set_xlabel("$a$")
+
+    ax.legend(bbox_to_anchor=(0, 1), loc="lower left")
+    ax.set_xlabel("$a$")
+    ax.set_ylabel(r"$\frac{\partial C(\boldmath{\theta})}{\partial a}$")
     plt.tight_layout()
     if not os.path.exists("figures"):
         os.makedirs("figures")
-    fig.savefig("./figures/parshift_vs_finitediff.pdf")
+    fig.savefig("./figures/exact_grad.pdf")
     plt.show()
 
-def parshift_vs_spsr(shots, num_samples):
+def sampled_grad(shots, num_samples):
     np.random.seed(21207)
     nqubits = 1
-    dev = qml.device("default.qubit", wires=nqubits)
-    dev_sample = qml.device("default.qubit", wires=nqubits, shots=[1] * shots)
-    if shots%num_samples:
-        raise ValueError("The number of shots should be divisible by the number of samples.")
-    dev_spsr = qml.device("default.qubit", wires=nqubits, shots=[1] * (shots//num_samples))
     observable = qml.Hermitian(get_random_observable(nqubits), wires=list(range(nqubits)))
 
     # a-axis resolution
-    gran = 1
-
-    # QNode that takes parameters a and b, as well as the observable, and parameter t for the
-    # exponential of the effective generator
-    qnode_grad = qml.QNode(circuit_with_opg, dev, interface="jax")
-
-    qnode_grad_sample_ps = qml.QNode(
-        circuit_with_opg, dev_sample, interface="jax", diff_method="parameter-shift"
-    )
-    qnode_grad_sample_spsr = qml.QNode(circuit_for_spsr, dev_spsr, interface="jax", diff_method=None)
-
-    # Gradient computed by differentiating exp(Omega * t)
-    grad_fn_generator = jax.jit(jax.grad(qnode_grad, argnums=2), static_argnums=3)
-    # Gradient computed via automatic differentiation
-    grad_fn_sample_ps = jax.jacobian(qnode_grad_sample_ps, argnums=2)
-    grad_fn_sample_spsr = spsr_evaluation(qnode_grad_sample_spsr, num_samples)
+    gran = 50
+    # Finite difference spacing
+    delta = 0.5
 
     # Fixed values of b for which to compute the gradient values
-    b_lines = [0.5, 1.0, 2.0]
+    b_lines = jnp.array([0.5, 1.0, 2.0])
     # grid for a-axis
-    a_grid = np.linspace(0, np.pi + 0.001, gran)
+    a_grid = jnp.linspace(0, np.pi + 0.001, gran)
 
-    grads_a_exact = evaluate_on_grid(
-        grad_fn_generator, a_grid, b_lines, jnp.array(0.0), observable=observable
-    )
-    grads_a_sample_ps_mean, grads_a_sample_ps_std = evaluate_on_grid(
-        grad_fn_sample_ps, a_grid, b_lines, jnp.array(0.0), observable=observable, sampled=True
-    )
-    grads_a_sample_spsr_mean, grads_a_sample_spsr_std = evaluate_on_grid(
-        grad_fn_sample_spsr, a_grid, b_lines, observable=observable, sampled=True
-    )
+    # Data generation/loading
+    filename = f"data/sampled_grad_{num_samples}_{shots}.dill"
+    if not os.path.exists(filename):
+        grad_fns = {
+            method: setup_grad_fn(method, observable, shots=None if method==ad else shots, delta=delta, num_samples=num_samples) for method in [ad, ps, fd, spsr]
+        }
+        grads = {ad: evaluate_on_grid(grad_fns[ad], a_grid, b_lines, observable=observable)}
+        stds = {}
+        grads[ps], stds[ps] = evaluate_on_grid(grad_fns[ps], a_grid, b_lines, jnp.array(0.0), observable=observable, sampled=True)
+        grads[fd], stds[fd] = evaluate_on_grid(grad_fns[fd], a_grid, b_lines, observable=observable, sampled=True)
+        grads[spsr], stds[spsr] = evaluate_on_grid(grad_fns[spsr], a_grid, b_lines, observable=observable, sampled=True)
+        with open(filename, "wb") as f:
+            dump((grads, stds), f)
+    else:
+        with open(filename, "rb") as f:
+            grads, stds = load(f)
+            
 
+    # Plotting
     plt.style.use("science")
     plt.rcParams.update({"font.size": 13})
     fig, axs = plt.subplots(3, 1, figsize=(5, 8), gridspec_kw={"hspace": 0.0})
-    labels = ["$\mathrm{SU}(N)$ Parameter shift", "Stochastic parameter shift"]
-    colors = ["xkcd:bright blue", "xkcd:coral"]
+    plot_kwargs = {
+        ad: {"ls": "-", "lw": 0.8, "zorder": 10, "color": "k"},
+        ps: {"ls": "-", "lw": 0.8, "zorder": 4, "color": "xkcd:bright blue"},
+        fd: {"ls": "-", "lw": 0.8, "zorder": 2, "color": "xkcd:pinkish red"},
+        spsr: {"ls": "-", "lw": 0.8, "zorder": 1, "color": "xkcd:grass green"},
+    }
     for i, ax in enumerate(axs):
-        plot = ax.plot(
-            a_grid,
-            grads_a_exact[:, i],
-            lw=1.1,
-            ls="-",
-            zorder=3,
-            alpha=0.7,
-            c="k",
-            label="" if i < 2 else "Exact",
-        )[0]
-        for j, (mean, std) in enumerate(
-            [
-                (grads_a_sample_ps_mean, grads_a_sample_ps_std),
-                (grads_a_sample_spsr_mean, grads_a_sample_spsr_std),
-            ]
-        ):
-            c = colors[j]
-            mu, sigma = mean[:, i], std[:, i]
-            ax.plot(a_grid, mu, lw=2.5, ls="--", zorder=1, label="" if i < 2 else labels[j], c=c)
-            ax.plot(a_grid, mu + sigma, lw=1.0, ls="-", alpha=0.3, c=c, zorder=-1)
-            ax.plot(a_grid, mu - sigma, lw=1.0, ls="-", alpha=0.3, c=c, zorder=-1)
-            ax.fill_between(a_grid, mu - sigma, mu + sigma, color=c, alpha=0.2, zorder=-1)
+        for method in [ad, ps, fd, spsr]:
+            label = "Exact value" if method==ad else method 
+            ax.plot(a_grid, grads[method][:, i], label=label, **plot_kwargs[method])
 
-        ax.text(
-            0.05, 0.95, rf"$b = ${b_lines[i]:1.1f}", transform=ax.transAxes, verticalalignment="top"
-        )
+            if method!=ad:
+                for sign in [1, -1]:
+                    ax.plot(a_grid, grads[method][:, i] + sign * stds[method][:, i], **plot_kwargs[method])
+                print(stds[method][:, i])
+                ax.fill_between(
+                    a_grid, 
+                    grads[method][:, i] - sign * stds[method][:, i],
+                    grads[method][:, i] + sign * stds[method][:, i],
+                    color=plot_kwargs[method]["color"],
+                    alpha=0.2, 
+                    zorder=plot_kwargs[method]["zorder"],
+                )
         ax.set_ylabel(r"$\frac{\partial C(\boldmath{\theta})}{\partial a}$")
-        if i < 2:
+        ax.text(
+            0.08, 0.95, rf"$b = ${b_lines[i]:1.1f}", transform=ax.transAxes, verticalalignment="top"
+        )
+        ax.xaxis.set_ticks_position("bottom")
+        if i<2:
             ax.set_xticks([])
-        else:
-            ax.legend(loc="lower left")
-            ax.xaxis.set_ticks_position("bottom")
-            ax.set_xlabel("$a$")
+
+    axs[0].legend(bbox_to_anchor=(0, 1), loc="lower left")
+    ax.set_xlabel("$a$")
     plt.tight_layout()
     if not os.path.exists("figures"):
         os.makedirs("figures")
-    fig.savefig("./figures/parshift_vs_spsr.pdf")
+    fig.savefig("./figures/sampled_grad.pdf")
     plt.show()
 
 
 if __name__ == "__main__":
-    shots = 10000
-    num_samples = 10
-    #exact_grad()
-    #sampled_grad(shots)
-    #parshift_vs_finitediff(shots)
-    parshift_vs_spsr(shots, num_samples)
+    shots = 1000
+    num_samples = 100
+    #exact_grad(num_samples)
+    sampled_grad(shots, num_samples)

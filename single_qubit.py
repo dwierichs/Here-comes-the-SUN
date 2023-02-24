@@ -1,4 +1,5 @@
 from itertools import product
+from tqdm import tqdm
 import pennylane as qml
 import numpy as np
 from pennylane.ops.qubit.special_unitary import pauli_basis_strings, pauli_basis_matrices
@@ -10,12 +11,14 @@ jnp = jax.numpy
 
 
 def get_random_observable(N: int):
+    """TODO"""
     basis = pauli_basis_matrices(N)
     c = np.random.randn(4**N - 1)
     return qml.math.tensordot(c, basis, axes=1)
 
 
 class MyExp(Operation):
+    """TODO"""
     num_params = 1
     num_wires = 1
 
@@ -116,6 +119,7 @@ def circuit_for_spsr(a, b, s, sign, observable):
 
 def finite_diff_first(fun, dx=5e-5, argnums=0):
     """Compute the second-order finite difference approximation of the first order derivative."""
+    """TODO"""
     if isinstance(argnums, int):
         argnums = [argnums]
 
@@ -136,26 +140,62 @@ def spsr_evaluation(fun, num_samples):
     evaluating an adequately adapted function for a given number of
     samples and with positive and negative signs, returning their 
     average difference.
+    TODO
     """
 
     def wrapped(*args, **kwargs):
         split_times = np.random.uniform(size=num_samples)
-        split_times_ = np.random.uniform(size=num_samples)
         diffs = [
-            fun(*args, s, 1, **kwargs) - fun(*args, s_, -1, **kwargs)
-            for s, s_ in zip(split_times, split_times_)
+            fun(*args, s, 1, **kwargs) - fun(*args, s, -1, **kwargs)
+            for s in split_times
         ]
-        return jnp.mean(jnp.array(diffs), axis=0)
+        return jnp.array(diffs)
 
     return wrapped
 
 
+def setup_grad_fn(method=None, observable=None, shots=None, **diff_kwargs):
+
+    nqubits = 1
+    dev_shots = shots if shots is None else [1] * shots
+    dev = qml.device("default.qubit", wires=nqubits, shots=dev_shots)
+    if method == "autodiff":
+        if shots is not None:
+            raise ValueError("With autodiff we require shots=None")
+        qnode = qml.QNode(circuit, dev, interface="jax")
+        grad_fn = jax.jit(jax.grad(qnode, argnums=0), static_argnums=2)
+        qnode = jax.jit(qnode, static_argnums=2)
+    elif method == r"$\mathrm{SU}(N)$ parameter-shift":
+        qnode = qml.QNode(circuit_with_opg, dev, interface="jax", diff_method="parameter-shift")
+        if shots is None:
+            grad_fn = jax.grad(qnode, argnums=2)
+        else:
+            grad_fn = jax.jacobian(qnode, argnums=2)
+    elif method == "Finite difference":
+        delta = diff_kwargs.get("delta")
+        qnode = qml.QNode(circuit, dev, interface="jax", diff_method=None)
+        grad_fn = finite_diff_first(qnode, dx=delta, argnums=0)
+    elif method == "Stochastic parameter-shift":
+        num_samples = diff_kwargs.get("num_samples")
+        qnode = qml.QNode(circuit_for_spsr, dev, interface="jax", diff_method=None)
+        grad_fn = spsr_evaluation(qnode, num_samples)
+
+    return grad_fn
+
+
 def evaluate_on_grid(fun, a_grid, b_grid, *other_args, sampled=False, **kwargs):
+    """Evaluate a function on a grid of values for two parameters, a and b. Optionally
+    split the evaluation into mean and standard deviation.
+
+    Args:
+    TODO
+
+    """
     shape = (len(a_grid), len(b_grid))
     if sampled:
         result_mean = np.zeros(shape)
         result_std = np.zeros(shape)
-        for tuples in product(enumerate(a_grid), enumerate(b_grid)):
+        for tuples in tqdm(product(enumerate(a_grid), enumerate(b_grid)), total=np.prod(shape)):
             ids, args = zip(*tuples)
             samples = fun(*args, *other_args, **kwargs)
             result_mean[ids] = jnp.mean(samples)
