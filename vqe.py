@@ -287,7 +287,7 @@ def plot_performance_diff(nqubits, depths, seed_list, max_steps, data_header):
     plt.tight_layout()
 
     # Save plot
-    fig.savefig(f"./figures/{nqubits}_qubit_comparison.pdf")
+    fig.savefig(f"./figures/{nqubits}_qubit_comparison.pdf", dpi=300)
     plt.show()
 
 
