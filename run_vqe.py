@@ -6,7 +6,7 @@ from multiprocessing import Pool
 from dill import dump
 import scienceplots
 
-from vqe import run_vqe, plot_a, plot_b
+from vqe import vqe, plot_performance_diff, plot_optim_curves
 
 # Choose the following settings
 
@@ -21,6 +21,7 @@ RUN = False  # Whether to run the computation. If results are present, computati
 PLOT = True  # Whether to create plots of the results
 num_workers = 1  # Number of threads to use in parallel. Needs to be set machine-dependently
 
+"""
 #  These are some settings with much lower computational cost, for illustration and testing
 nruns = 4  # Number of VQE runs
 max_steps = 1000  # number of optimization steps in each VQE
@@ -31,6 +32,7 @@ fix_pars_per_layer = False  # Whether to reuse parameters for all operations in 
 RUN = True  # Whether to run the computation. If results are present, computations are skipped
 PLOT = True  # Whether to create plots of the results
 num_workers = 4  # Number of threads to use in parallel. Needs to be set machine-dependently
+"""
 
 # Directory name to save results to. They will be in f"./data/{data_header}/"
 data_header = "paper/"
@@ -59,9 +61,9 @@ if __name__ == "__main__":
             if not os.path.exists(data_path):
                 os.makedirs(data_path)
 
-            # Mappable version of ``run_vqe``.
+            # Mappable version of ``vqe``.
             func = partial(
-                run_vqe,
+                vqe,
                 nqubits=nqubits,
                 depth=depth,
                 opname=opname,
@@ -70,12 +72,12 @@ if __name__ == "__main__":
                 learning_rate=learning_rate,
                 data_header=data_header,
             )
-            # Map ``run_vqe`` across the partial seed lists for parallel execution
+            # Map ``vqe`` across the partial seed lists for parallel execution
             with Pool(num_workers) as p:
                 p.map(func, seed_lists)
 
     # Create plots if requested
     if PLOT:
         seed_list = sum(seed_lists, start=[])
-        plot_a(nqubits, depths, seed_list, max_steps, data_header)
-        plot_b(nqubits, max(depths), seed_list, max_steps, data_header)
+        plot_performance_diff(nqubits, depths, seed_list, max_steps, data_header)
+        plot_optim_curves(nqubits, max(depths), seed_list, max_steps, data_header)

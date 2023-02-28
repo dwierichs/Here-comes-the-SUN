@@ -9,6 +9,7 @@ from tqdm import tqdm
 import jax
 
 jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_platform_name", "cpu")
 
 
 def apply_op_in_layers(theta, Op, depth, nqubits, fix_pars_per_layer=True):
@@ -106,7 +107,7 @@ def make_observable(wires, seed):
     return qml.Hermitian(observable_matrix, wires=wires), observable_matrix
 
 
-def run_vqe(
+def vqe(
     seed_list,
     nqubits=None,
     depth=None,
@@ -250,7 +251,7 @@ def load_data(nqubits, depth, seed_list, max_steps, data_header):
     return decomp, su4
 
 
-def plot_a(nqubits, depths, seed_list, max_steps, data_header):
+def plot_performance_diff(nqubits, depths, seed_list, max_steps, data_header):
     """Plot the difference in relative energy error between the VQE optimization curves
     for the SU(N) gate and the local gate sequence operation.
 
@@ -268,31 +269,29 @@ def plot_a(nqubits, depths, seed_list, max_steps, data_header):
     fig, axs = plt.subplots(1, 1)
     fig.set_size_inches(5, 4)
 
-    for depth in depths:
-        # Load data
-        decomp, su4 = load_data(nqubits, depth, seed_list, max_steps, data_header)
-        # Plot the difference in relative energy error, averaged over all seeds
-        axs.plot(np.mean(su4 - decomp, axis=0), label=rf"$\ell$ = {depth}", linewidth=2)
-    # Plot reference line at 0
-    axs.plot([0, max_steps], [0.0, 0.0], color="gray", linestyle="--")
-
-    axs.legend(loc="lower right")
-    axs.set_xlabel("Step")
-    axs.set_ylabel(r"$\Delta \bar{E}$")
-    plt.tight_layout()
-
     # Add circuit diagram
     arr_image = mpimg.imread("./figures/brick.png", format="png")
     axin = fig.add_axes([0.3, 0.5, 0.4, 0.4])
     axin.matshow(arr_image)
     axin.axis("off")
 
+    for depth in depths:
+        # Load data
+        decomp, su4 = load_data(nqubits, depth, seed_list, max_steps, data_header)
+        # Plot the difference in relative energy error, averaged over all seeds
+        axs.plot(np.mean(su4 - decomp, axis=0), label=rf"$\ell$ = {depth}", linewidth=2)
+
+    axs.legend(loc="lower right")
+    axs.set_xlabel("Step")
+    axs.set_ylabel(r"$\Delta \bar{E}$")
+    plt.tight_layout()
+
     # Save plot
     fig.savefig(f"./figures/{nqubits}_qubit_comparison.pdf")
     plt.show()
 
 
-def plot_b(nqubits, depth, seed_list, max_steps, data_header):
+def plot_optim_curves(nqubits, depth, seed_list, max_steps, data_header):
     """Plot the relative energy error optimization curves of the VQE runs.
 
     Args:

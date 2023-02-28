@@ -1,6 +1,7 @@
-pennylane>=0.29
-jax
-jaxlib
+pennylane
+jax==0.4.2
+jaxlib==0.4.2
 tqdm
 dill
 scienceplots
+pyqt5
