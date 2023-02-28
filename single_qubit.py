@@ -47,7 +47,7 @@ class OneParameterGroup(Operation):
         U(t, \Omega) = \exp(t\Omega)
 
     """
-    num_params = 1 # The time parameter is the only trainable parameter
+    num_params = 1  # The time parameter is the only trainable parameter
 
     def __init__(self, t, wires, generator=None, do_queue=True, id=None):
         self._generator = generator
@@ -105,6 +105,7 @@ def circuit(a, b, observable):
     qml.SpecialUnitary(theta, [0])
     return qml.expval(observable)
 
+
 def circuit_with_opg(a, b, t, observable):
     """Quantum circuit with a single-qubit SpecialUnitary, as well as a one-parameter group
     corresponding to the first parameter of said unitary, and an expectation value
@@ -133,6 +134,7 @@ def circuit_with_opg(a, b, t, observable):
     qml.apply(op)
     return qml.expval(observable)
 
+
 def circuit_for_spsr(a, b, s, sign, observable):
     """Quantum circuit with a single-qubit SpecialUnitary interrupted by a rotation about
     PauliX by an angle of $\pm\pi/4$ and an expectation value measurement.
@@ -150,8 +152,8 @@ def circuit_for_spsr(a, b, s, sign, observable):
         qml.measurements.ExpectationMP: Measurement process to obtain the expectation value.
     """
     theta = jnp.array([a, b, 0.0])
-    qml.SpecialUnitary((1-s) * theta, [0])
-    qml.RX(-sign * jnp.pi/2, [0])
+    qml.SpecialUnitary((1 - s) * theta, [0])
+    qml.RX(-sign * jnp.pi / 2, [0])
     qml.SpecialUnitary(s * theta, [0])
     return qml.expval(observable)
 
@@ -193,6 +195,7 @@ def finite_diff_first(fun, delta=5e-5, argnums=0):
 
     return wrapped
 
+
 def spsr_evaluation(fun, num_samples):
     r"""Evaluate the stochastic parameter-shift rule of a function by sampling
     splitting times and averaging the corresponding parameter-shift derivatives.
@@ -202,24 +205,21 @@ def spsr_evaluation(fun, num_samples):
         fun (callable): function to differentiate with specific signature
             ``fun(*args, split_time, sign, **kwargs)``
         num_samples (int): Number of Monte Carlo samples to use
-    
+
     Returns:
         callable: function with the signature ``f(*args, **kwargs)`` where the arguments
         correspond to those without ``split_time`` and ``sign`` in the original function.
 
     Compute the stochastic parameter-shift rule derivative by sampling splitting times
     ``s`` and computing the parameter-shift rule for each splitting time, averaging
-    all obtained derivatives in the end. See 
+    all obtained derivatives in the end. See
     `Banchi & Crooks (2021) <https://quantum-journal.org/papers/q-2021-01-25-386/>`__ for
     details.
     """
 
     def wrapped(*args, **kwargs):
         split_times = np.random.uniform(size=num_samples)
-        diffs = [
-            fun(*args, s, 1, **kwargs) - fun(*args, s, -1, **kwargs)
-            for s in split_times
-        ]
+        diffs = [fun(*args, s, 1, **kwargs) - fun(*args, s, -1, **kwargs) for s in split_times]
         return jnp.array(diffs)
 
     return wrapped
@@ -228,7 +228,7 @@ def spsr_evaluation(fun, num_samples):
 def setup_grad_fn(method=None, observable=None, shots=None, **diff_kwargs):
     """Create the gradient function for the single-qubit numerical experiments
     in the paper, Section III, using the indicated method.
-    
+
     Args:
         method (str): differentiation method to use. See the code for the eligible options
         observable (tensor_like): matrix of the observable to be measured
@@ -283,7 +283,7 @@ def evaluate_on_grid(fun, a_grid, b_grid, *other_args, sampled=False, **kwargs):
     Returns:
         array or tuple[array]: The evaluations of the function ``fun`` on the grid
         defined by ``a_grid`` and ``b_grid``. If ``sampled=True``, a two-entry ``tuple`` of
-        arrays is returned, with the mean in the first and the standard deviation in 
+        arrays is returned, with the mean in the first and the standard deviation in
         the second entry.
     """
     shape = (len(a_grid), len(b_grid))

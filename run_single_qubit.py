@@ -23,6 +23,7 @@ ps = r"$\mathrm{SU}(N)$ parameter-shift"
 fd = "Finite difference"
 spsr = "Stochastic parameter-shift"
 
+
 def exact_grad(num_samples, delta):
     np.random.seed(21207)
     nqubits = 1
@@ -40,17 +41,26 @@ def exact_grad(num_samples, delta):
     filename = f"data/paper/exact_grad_{num_samples}_{delta}.dill"
     if not os.path.exists(filename):
         grad_fns = {
-            method: setup_grad_fn(method, observable, shots=None, delta=delta, num_samples=num_samples) for method in [ad, ps, fd, spsr]
+            method: setup_grad_fn(
+                method, observable, shots=None, delta=delta, num_samples=num_samples
+            )
+            for method in [ad, ps, fd, spsr]
         }
-        grads = {method: evaluate_on_grid(grad_fns[method], a_grid, b_lines, observable=observable) for method in [ad, fd]}
-        grads[spsr], spsr_std = evaluate_on_grid(grad_fns[spsr], a_grid, b_lines, observable=observable, sampled=True)
-        grads[ps] = evaluate_on_grid(grad_fns[ps], a_grid, b_lines, jnp.array(0.0), observable=observable)
+        grads = {
+            method: evaluate_on_grid(grad_fns[method], a_grid, b_lines, observable=observable)
+            for method in [ad, fd]
+        }
+        grads[spsr], spsr_std = evaluate_on_grid(
+            grad_fns[spsr], a_grid, b_lines, observable=observable, sampled=True
+        )
+        grads[ps] = evaluate_on_grid(
+            grad_fns[ps], a_grid, b_lines, jnp.array(0.0), observable=observable
+        )
         with open(filename, "wb") as f:
             dump((grads, spsr_std), f)
     else:
         with open(filename, "rb") as f:
             grads, spsr_std = load(f)
-            
 
     # Plotting
     plt.style.use("science")
@@ -70,31 +80,38 @@ def exact_grad(num_samples, delta):
     for i in range(3):
         plots = []
         for method in labels:
-            p, = ax.plot(a_grid, grads[method][:, i], **plot_kwargs[method])
+            (p,) = ax.plot(a_grid, grads[method][:, i], **plot_kwargs[method])
             plots.append(p)
 
         for sign in [1, -1]:
             ax.plot(a_grid, grads[spsr][:, i] + sign * spsr_std[:, i], **plot_kwargs[spsr])
         fill = ax.fill_between(
-            a_grid, 
+            a_grid,
             grads[spsr][:, i] - spsr_std[:, i],
             grads[spsr][:, i] + spsr_std[:, i],
             color=plot_kwargs[spsr]["color"],
-            alpha=0.2, 
+            alpha=0.2,
             zorder=plot_kwargs[spsr]["zorder"],
         )
-        ax.text(*text_pos[i], rf"$b = ${b_lines[i]:1.1f}", transform=ax.transAxes, va=text_align[i][0], ha=text_align[i][1])
+        ax.text(
+            *text_pos[i],
+            rf"$b = ${b_lines[i]:1.1f}",
+            transform=ax.transAxes,
+            va=text_align[i][0],
+            ha=text_align[i][1],
+        )
         ax.plot(*zip(text_pos[i], targ_pos[i]), lw=0.8, c="0.8", transform=ax.transAxes)
     labels[0] = "Exact value"
 
-    ax.legend(plots[:3]+[(plots[3],fill)], labels, bbox_to_anchor=(0, 1), loc="lower left")
-    ax.set(xlabel="$a$", xticks=[0, np.pi/2, np.pi], xticklabels=["$0$", "$\pi/2$", "$\pi$"])
+    ax.legend(plots[:3] + [(plots[3], fill)], labels, bbox_to_anchor=(0, 1), loc="lower left")
+    ax.set(xlabel="$a$", xticks=[0, np.pi / 2, np.pi], xticklabels=["$0$", "$\pi/2$", "$\pi$"])
     ax.set_ylabel(r"$\partial_a C(\boldmath{\theta})$")
     plt.tight_layout()
     if not os.path.exists("figures"):
         os.makedirs("figures")
     fig.savefig("./figures/exact_grad.pdf")
     plt.show()
+
 
 def finite_diff_tune(shots, deltas, reps):
     np.random.seed(21207)
@@ -114,19 +131,25 @@ def finite_diff_tune(shots, deltas, reps):
     filename = f"data/paper/finite_diff_tune_{shots}_{deltas}_{reps}.dill"
     if not os.path.exists(filename):
         grad_fns = {
-            delta: setup_grad_fn(fd, observable, shots=shots, delta=delta) for delta in deltas if delta > 0
+            delta: setup_grad_fn(fd, observable, shots=shots, delta=delta)
+            for delta in deltas
+            if delta > 0
         }
         grad_fns[0] = setup_grad_fn(ad, observable)
         grads = {}
         stds = {}
         for delta in deltas:
-            if delta==0:
-                grads[delta] = evaluate_on_grid(grad_fns[delta], a_grid, b_lines, observable=observable)
+            if delta == 0:
+                grads[delta] = evaluate_on_grid(
+                    grad_fns[delta], a_grid, b_lines, observable=observable
+                )
             else:
                 _grads = []
                 _stds = []
                 for _ in range(reps):
-                    __grads, __stds = evaluate_on_grid(grad_fns[delta], a_grid, b_lines, observable=observable, sampled=True)
+                    __grads, __stds = evaluate_on_grid(
+                        grad_fns[delta], a_grid, b_lines, observable=observable, sampled=True
+                    )
                     _grads.append(__grads)
                     _stds.append(__stds)
                 grads[delta] = np.mean(_grads, axis=0)
@@ -155,34 +178,50 @@ def finite_diff_tune(shots, deltas, reps):
         plots = []
         fills = []
         for delta in deltas:
-            p, = ax.plot(a_grid, grads[delta][:, i], **plot_kwargs[delta])
+            (p,) = ax.plot(a_grid, grads[delta][:, i], **plot_kwargs[delta])
 
-            if delta>0:
+            if delta > 0:
                 labels.append(f"$\delta={delta}$")
                 plots.append(p)
-                ls, lw, zorder, color = [plot_kwargs[delta].get(v) for v in ["ls", "lw", "zorder", "color"]]
+                ls, lw, zorder, color = [
+                    plot_kwargs[delta].get(v) for v in ["ls", "lw", "zorder", "color"]
+                ]
                 for sign in [1, -1]:
-                    ax.plot(a_grid, 
-                            grads[delta][:, i] + sign * stds[delta][:, i],
-                            ls=ls, lw=lw/2, zorder=zorder, color=color)
-                fills.append(ax.fill_between(
-                    a_grid, 
-                    grads[delta][:, i] - stds[delta][:, i],
-                    grads[delta][:, i] + stds[delta][:, i],
-                    color=color,
-                    alpha=0.2, 
-                    zorder=zorder,
-                ))
-        ax.set(xlabel="$a$", xticks=[0, np.pi/2, np.pi], xticklabels=["$0$", "$\pi/2$", "$\pi$"])
+                    ax.plot(
+                        a_grid,
+                        grads[delta][:, i] + sign * stds[delta][:, i],
+                        ls=ls,
+                        lw=lw / 2,
+                        zorder=zorder,
+                        color=color,
+                    )
+                fills.append(
+                    ax.fill_between(
+                        a_grid,
+                        grads[delta][:, i] - stds[delta][:, i],
+                        grads[delta][:, i] + stds[delta][:, i],
+                        color=color,
+                        alpha=0.2,
+                        zorder=zorder,
+                    )
+                )
+        ax.set(xlabel="$a$", xticks=[0, np.pi / 2, np.pi], xticklabels=["$0$", "$\pi/2$", "$\pi$"])
         ax.text(
-            0.95, 0.05, rf"$b = ${b_lines[i]:1.1f}", transform=ax.transAxes, va="bottom", ha="right",
+            0.95,
+            0.05,
+            rf"$b = ${b_lines[i]:1.1f}",
+            transform=ax.transAxes,
+            va="bottom",
+            ha="right",
         )
         ax.set_xlim((0, np.pi))
-        #ax.xaxis.set_ticks_position("bottom")
-        #if i>0:
-            #ax.set_yticks([])
+        # ax.xaxis.set_ticks_position("bottom")
+        # if i>0:
+        # ax.set_yticks([])
 
-    axs[1].legend(list(zip(plots, fills)), labels, bbox_to_anchor=(0.5, 1), loc="lower center", ncols=4)
+    axs[1].legend(
+        list(zip(plots, fills)), labels, bbox_to_anchor=(0.5, 1), loc="lower center", ncols=4
+    )
     axs[0].set_ylabel(r"$[\partial_{\text{FD}, a}-\partial_a] C(\boldmath{\theta})$")
     plt.tight_layout()
     if not os.path.exists("figures"):
@@ -207,21 +246,29 @@ def sampled_grad(shots, num_samples, delta):
     # Data generation/loading
     filename = f"data/paper/sampled_grad_{num_samples}_{shots}_{delta}.dill"
     if not os.path.exists(filename):
-        shots = {ad: None, ps: shots, fd: shots, spsr: shots//num_samples}
+        shots = {ad: None, ps: shots, fd: shots, spsr: shots // num_samples}
         grad_fns = {
-            method: setup_grad_fn(method, observable, shots=shots[method], delta=delta, num_samples=num_samples) for method in [ad, ps, fd, spsr]
+            method: setup_grad_fn(
+                method, observable, shots=shots[method], delta=delta, num_samples=num_samples
+            )
+            for method in [ad, ps, fd, spsr]
         }
         grads = {ad: evaluate_on_grid(grad_fns[ad], a_grid, b_lines, observable=observable)}
         stds = {}
-        grads[ps], stds[ps] = evaluate_on_grid(grad_fns[ps], a_grid, b_lines, jnp.array(0.0), observable=observable, sampled=True)
-        grads[fd], stds[fd] = evaluate_on_grid(grad_fns[fd], a_grid, b_lines, observable=observable, sampled=True)
-        grads[spsr], stds[spsr] = evaluate_on_grid(grad_fns[spsr], a_grid, b_lines, observable=observable, sampled=True)
+        grads[ps], stds[ps] = evaluate_on_grid(
+            grad_fns[ps], a_grid, b_lines, jnp.array(0.0), observable=observable, sampled=True
+        )
+        grads[fd], stds[fd] = evaluate_on_grid(
+            grad_fns[fd], a_grid, b_lines, observable=observable, sampled=True
+        )
+        grads[spsr], stds[spsr] = evaluate_on_grid(
+            grad_fns[spsr], a_grid, b_lines, observable=observable, sampled=True
+        )
         with open(filename, "wb") as f:
             dump((grads, stds), f)
     else:
         with open(filename, "rb") as f:
             grads, stds = load(f)
-            
 
     # Plotting
     plt.style.use("science")
@@ -238,31 +285,35 @@ def sampled_grad(shots, num_samples, delta):
         plots = []
         fills = []
         for method in [ad, ps, fd, spsr]:
-            labels.append("Exact value" if method==ad else method)
+            labels.append("Exact value" if method == ad else method)
             plots.append(ax.plot(a_grid, grads[method][:, i], **plot_kwargs[method])[0])
 
-            if method!=ad:
+            if method != ad:
                 for sign in [1, -1]:
-                    ax.plot(a_grid, grads[method][:, i] + sign * stds[method][:, i], **plot_kwargs[method])
-                fills.append(ax.fill_between(
-                    a_grid, 
-                    grads[method][:, i] - stds[method][:, i],
-                    grads[method][:, i] + stds[method][:, i],
-                    color=plot_kwargs[method]["color"],
-                    alpha=0.2, 
-                    zorder=plot_kwargs[method]["zorder"],
-                ))
+                    ax.plot(
+                        a_grid,
+                        grads[method][:, i] + sign * stds[method][:, i],
+                        **plot_kwargs[method],
+                    )
+                fills.append(
+                    ax.fill_between(
+                        a_grid,
+                        grads[method][:, i] - stds[method][:, i],
+                        grads[method][:, i] + stds[method][:, i],
+                        color=plot_kwargs[method]["color"],
+                        alpha=0.2,
+                        zorder=plot_kwargs[method]["zorder"],
+                    )
+                )
         ax.set_ylabel(r"$\partial_a C(\boldmath{\theta})$")
-        ax.text(
-            0.05, 0.12, rf"$b = ${b_lines[i]:1.1f}", transform=ax.transAxes, va="top"
-        )
+        ax.text(0.05, 0.12, rf"$b = ${b_lines[i]:1.1f}", transform=ax.transAxes, va="top")
         ax.xaxis.set_ticks_position("bottom")
-        if i<2:
+        if i < 2:
             ax.set_xticks([])
 
     handles = [plots[0]] + list(zip(plots[1:], fills))
     axs[0].legend(handles, labels, bbox_to_anchor=(0, 1), loc="lower left")
-    ax.set(xlabel="$a$", xticks=[0, np.pi/2, np.pi], xticklabels=["$0$", "$\pi/2$", "$\pi$"])
+    ax.set(xlabel="$a$", xticks=[0, np.pi / 2, np.pi], xticklabels=["$0$", "$\pi/2$", "$\pi$"])
     plt.tight_layout()
     if not os.path.exists("figures"):
         os.makedirs("figures")
@@ -279,5 +330,5 @@ if __name__ == "__main__":
 
     shots = 100
     reps = 100
-    deltas = [0, 0.5, 0.75, 1.]
+    deltas = [0, 0.5, 0.75, 1.0]
     finite_diff_tune(shots, deltas, reps)
