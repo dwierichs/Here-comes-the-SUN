@@ -274,12 +274,13 @@ def plot_performance_diff(nqubits, depths, seed_list, max_steps, data_header):
     axin = fig.add_axes([0.3, 0.5, 0.4, 0.4])
     axin.matshow(arr_image)
     axin.axis("off")
+    colors = ["xkcd:grass green", "xkcd:pinkish red", "xkcd:bright blue"]
 
-    for depth in depths:
+    for depth, c in zip(depths, colors):
         # Load data
         decomp, su4 = load_data(nqubits, depth, seed_list, max_steps, data_header)
         # Plot the difference in relative energy error, averaged over all seeds
-        axs.plot(np.mean(su4 - decomp, axis=0), label=rf"$\ell$ = {depth}", linewidth=2)
+        axs.plot(np.mean(su4 - decomp, axis=0), label=rf"$\ell$ = {depth}", linewidth=2, c=c)
 
     axs.legend(loc="lower right")
     axs.set_xlabel("Step")
