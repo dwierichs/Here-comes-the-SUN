@@ -2,7 +2,7 @@
 
 This repository contains the code to reproduce all results and numerical figures/plots
 of the paper
-["Here comes the SU(N): multivariate quantum gates and gradients"](arxiv.org/abs/2303.11355
+["Here comes the SU(N): multivariate quantum gates and gradients"](arxiv.org/abs/2303.11355)
 by Roeland Wiersema, Dylan Lewis, David Wierichs, Juan Carrasquilla and Nathan Killoran.
 
 The repository is structured as follows:
